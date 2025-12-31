@@ -47,8 +47,11 @@ AI-Photo-Master/
 │       │   ├── segmentation/          # 人像分割模块
 │       │   │   ├── SegmentationHelper.kt      # ML Kit 人像分割封装
 │       │   │   └── PortraitEffectProcessor.kt # 人像创意效果处理器
+│       │   ├── cloud/                   # 云端分析模块
+│       │   │   └── CloudVisionManager.kt     # Google Cloud Vision 单例
 │       │   ├── viewmodel/             # ViewModel 层
-│       │   │   └── PhotoEditViewModel.kt      # 图片编辑 ViewModel
+│       │   │   ├── PhotoEditViewModel.kt      # 图片编辑 ViewModel
+│       │   │   └── MainViewModel.kt           # 主界面 ViewModel
 │       │   └── utils/
 │       │       ├── BitmapUtils.kt     # Bitmap 工具类
 │       │       └── PermissionHelper.kt # 权限辅助类
@@ -268,6 +271,129 @@ val glowing = processor.applyEdgeGlow(bitmap, glowColor = Color.CYAN)
 processor.release()
 ```
 
+### 云端智能分析引擎
+
+基于 Google Cloud Vision API 的云端图像分析系统。
+
+#### 架构设计
+
+```
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│   输入图片      │ ──▶ │  CloudVisionManager  │ ──▶ │   分析结果      │
+└─────────────────┘     │  (Cloud Vision API)  │     └─────────────────┘
+                        └──────────────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │ 标签识别 │ │ 颜色分析 │ │ 文字识别 │
+              └──────────┘ └──────────┘ └──────────┘
+```
+
+#### CloudVisionManager - 云端分析单例
+
+```kotlin
+// 分析图片标签
+val labelResult = CloudVisionManager.detectLabels(bitmap, maxLabels = 10)
+if (labelResult.success) {
+    labelResult.labels.forEach { label ->
+        println("${label.description}: ${label.score}")
+    }
+}
+
+// 分析主色调
+val colorResult = CloudVisionManager.analyzeImageProperties(bitmap, maxColors = 5)
+if (colorResult.success) {
+    colorResult.dominantColors.forEach { color ->
+        println("颜色: ${color.toHexString()}, 占比: ${color.pixelFraction}")
+    }
+}
+
+// 文字识别
+val textResult = CloudVisionManager.detectText(bitmap)
+if (textResult.success) {
+    println("识别文字: ${textResult.text}")
+}
+
+// 安全搜索检测
+val safeResult = CloudVisionManager.safeSearchDetection(bitmap)
+if (safeResult.success) {
+    println("成人内容: ${safeResult.adult}")
+    println("暴力内容: ${safeResult.violence}")
+}
+```
+
+#### 配置 Service Account
+
+```kotlin
+// 在 assets 目录放置 service-account.json 文件
+// CloudVisionManager 会自动加载凭证
+
+// 或者使用本地回退模式（无需 API 密钥）
+// 本地模式使用 Palette 分析颜色，返回模拟标签数据
+```
+
+### 主界面集成
+
+#### MainViewModel - 统一状态管理
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+    private val viewModel: MainViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // 观察编辑模式
+        viewModel.currentMode.observe(this) { mode ->
+            when (mode) {
+                EditMode.BASIC -> showBasicPanel()
+                EditMode.FACE -> showFacePanel()
+                EditMode.PORTRAIT -> showPortraitPanel()
+                EditMode.ANALYSIS -> showAnalysisPanel()
+            }
+        }
+
+        // 观察处理后的图片
+        viewModel.processedBitmap.observe(this) { bitmap ->
+            gpuImageView.setImage(bitmap)
+        }
+
+        // 观察分析结果
+        viewModel.analysisResult.observe(this) { state ->
+            when (state) {
+                is AnalysisState.Success -> showResult(state.result)
+                is AnalysisState.Error -> showError(state.message)
+            }
+        }
+
+        // 应用效果
+        btnSlim.setOnClickListener {
+            viewModel.setSlimIntensity(0.5f)
+        }
+
+        btnBlur.setOnClickListener {
+            viewModel.applyBackgroundBlur(25f)
+        }
+
+        btnAnalyze.setOnClickListener {
+            viewModel.analyzeImage()
+        }
+    }
+}
+```
+
+#### 底部导航栏
+
+应用使用底部导航栏切换四大功能模块：
+
+| 标签 | 功能 | 说明 |
+|------|------|------|
+| 基础编辑 | 旋转、翻转、重置 | 基础图片变换 |
+| 瘦脸大眼 | 人脸检测 + 美颜 | MediaPipe + GLSL |
+| 人像特效 | 背景虚化、留色等 | ML Kit 分割 |
+| 智能分析 | 标签/颜色识别 | Cloud Vision |
+
 #### PhotoEditViewModel - UI 集成示例
 
 ```kotlin
@@ -427,15 +553,20 @@ git clone https://github.com/your-repo/AI-Photo-Master.git
 - [x] 人像留色 / 反向人像留色
 - [x] 背景替换 / 纯色背景
 - [x] 边缘光效
+- [x] CloudVisionManager - 云端图像分析单例
+- [x] MainViewModel - 主界面状态管理
+- [x] MainActivity - 四大功能模块集成
+- [x] GPUImageView 实时预览
+- [x] 底部导航栏切换
 
 ### 进行中
-- [ ] 完善图片编辑界面
 - [ ] 添加保存和分享功能
+- [ ] 实时相机美颜预览
 
 ### 待开发
-- [ ] 实现云端智能分析
-- [ ] 实时相机美颜预览
 - [ ] 更多滤镜效果
+- [ ] 图片裁剪功能
+- [ ] 贴纸和文字功能
 
 ## 许可证
 
