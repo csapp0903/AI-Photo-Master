@@ -37,6 +37,13 @@ AI-Photo-Master/
 │       │   ├── AIPhotoMasterApp.kt    # Application 类
 │       │   ├── ui/
 │       │   │   └── MainActivity.kt    # 主界面
+│       │   ├── face/                  # 人脸处理模块
+│       │   │   ├── FaceMeshHelper.kt        # MediaPipe 封装
+│       │   │   ├── FaceLandmarkIndices.kt   # 关键点索引常量
+│       │   │   └── FaceBeautyProcessor.kt   # 美颜处理器
+│       │   ├── filter/                # OpenGL 滤镜模块
+│       │   │   ├── GPUImageFaceWarpFilter.kt        # 基础人脸变形滤镜
+│       │   │   └── GPUImageAdvancedFaceWarpFilter.kt # 高级多点变形滤镜
 │       │   └── utils/
 │       │       ├── BitmapUtils.kt     # Bitmap 工具类
 │       │       └── PermissionHelper.kt # 权限辅助类
@@ -79,6 +86,112 @@ implementation("androidx.camera:camera-view:1.3.1")
 
 // EXIF 处理
 implementation("androidx.exifinterface:exifinterface:1.3.7")
+```
+
+## 核心功能模块
+
+### 人脸美颜引擎
+
+基于 MediaPipe Face Mesh 和 OpenGL ES 的实时人脸美颜系统。
+
+#### 架构设计
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   输入图片/帧    │ ──▶ │  FaceMeshHelper  │ ──▶ │  468个关键点    │
+└─────────────────┘     │  (MediaPipe)     │     └────────┬────────┘
+                        └──────────────────┘              │
+                                                          ▼
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│    输出图片     │ ◀── │  GPUImageFilter  │ ◀── │  GLSL液化着色器  │
+└─────────────────┘     │  (OpenGL ES)     │     └─────────────────┘
+```
+
+#### FaceMeshHelper - 人脸关键点检测
+
+```kotlin
+// 创建检测器（用于静态图片）
+val helper = FaceMeshHelper.createForImage(context)
+
+// 检测人脸
+val result = helper.detectImage(bitmap)
+if (result.hasFace) {
+    val landmarks = result.faces[0].landmarks  // 478个关键点
+    // landmarks[0..467] = 面部关键点
+    // landmarks[468..477] = 虹膜关键点
+}
+
+// 释放资源
+helper.close()
+```
+
+#### GPUImageFaceWarpFilter - 液化变形滤镜
+
+核心 GLSL 液化算法实现瘦脸和大眼效果：
+
+```kotlin
+val filter = GPUImageFaceWarpFilter()
+
+// 更新人脸关键点
+filter.updateLandmarks(landmarks)
+
+// 设置瘦脸强度 (0.0 ~ 1.0)
+filter.setSlimIntensity(0.5f)
+
+// 设置大眼强度 (0.0 ~ 1.0)
+filter.setEyeEnlargeIntensity(0.3f)
+
+// 应用到 GPUImage
+gpuImage.setFilter(filter)
+val result = gpuImage.bitmapWithFilterApplied
+```
+
+#### FaceBeautyProcessor - 一体化美颜处理器
+
+封装了检测和渲染的完整流程：
+
+```kotlin
+// 创建处理器
+val processor = FaceBeautyProcessor.create(context)
+
+// 设置美颜参数
+processor.setSlimIntensity(0.5f)      // 瘦脸
+processor.setEyeEnlargeIntensity(0.3f) // 大眼
+
+// 处理图片（自动检测人脸 + 应用变形）
+val beautifiedBitmap = processor.process(inputBitmap)
+
+// 释放资源
+processor.release()
+```
+
+#### GLSL 液化算法原理
+
+```glsl
+// 推动型液化（瘦脸）
+vec2 pushWarp(vec2 coord, vec2 center, vec2 direction, float radius, float intensity) {
+    float dist = distance(coord, center);
+    if (dist > radius) return coord;
+
+    // 平滑衰减：距离中心越近，变形越强
+    float falloff = 1.0 - smoothstep(0.0, 1.0, dist / radius);
+    falloff = falloff * falloff;
+
+    // 沿方向推动像素
+    return coord - direction * intensity * radius * falloff;
+}
+
+// 放大型液化（大眼）
+vec2 enlargeWarp(vec2 coord, vec2 center, float radius, float intensity) {
+    float dist = distance(coord, center);
+    if (dist > radius) return coord;
+
+    // 将纹理坐标向中心收缩 = 显示效果放大
+    float weight = 1.0 - (dist / radius) * (dist / radius);
+    float scale = 1.0 - intensity * weight * 0.35;
+
+    return center + (coord - center) * scale;
+}
 ```
 
 ## 工具类说明
@@ -182,13 +295,25 @@ git clone https://github.com/your-repo/AI-Photo-Master.git
 2. **MediaPipe**: 首次运行时会下载模型文件
 3. **内存优化**: 建议在 AndroidManifest.xml 中启用 `android:largeHeap="true"`
 
-## 后续开发计划
+## 开发进度
 
+### 已完成
+- [x] 项目基础架构搭建
+- [x] BitmapUtils / PermissionHelper 工具类
+- [x] FaceMeshHelper - MediaPipe 人脸检测封装
+- [x] GPUImageFaceWarpFilter - GLSL 液化变形滤镜
+- [x] GPUImageAdvancedFaceWarpFilter - 多点高级变形滤镜
+- [x] FaceBeautyProcessor - 一体化美颜处理器
+
+### 进行中
 - [ ] 实现滤镜选择界面
-- [ ] 集成 MediaPipe 面部美化
+- [ ] 添加美颜强度调节 UI
+
+### 待开发
 - [ ] 添加人像背景替换功能
 - [ ] 实现云端智能分析
 - [ ] 添加图片导出与分享
+- [ ] 实时相机美颜预览
 
 ## 许可证
 
