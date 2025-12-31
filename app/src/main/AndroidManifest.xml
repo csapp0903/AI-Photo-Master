@@ -82,6 +82,13 @@
             </intent-filter>
         </activity>
 
+        <!-- 图片编辑Activity -->
+        <activity
+            android:name=".ui.PhotoEditActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- FileProvider 用于安全分享文件 -->
         <provider
             android:name="androidx.core.content.FileProvider"

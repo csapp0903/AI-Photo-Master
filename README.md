@@ -44,6 +44,11 @@ AI-Photo-Master/
 │       │   ├── filter/                # OpenGL 滤镜模块
 │       │   │   ├── GPUImageFaceWarpFilter.kt        # 基础人脸变形滤镜
 │       │   │   └── GPUImageAdvancedFaceWarpFilter.kt # 高级多点变形滤镜
+│       │   ├── segmentation/          # 人像分割模块
+│       │   │   ├── SegmentationHelper.kt      # ML Kit 人像分割封装
+│       │   │   └── PortraitEffectProcessor.kt # 人像创意效果处理器
+│       │   ├── viewmodel/             # ViewModel 层
+│       │   │   └── PhotoEditViewModel.kt      # 图片编辑 ViewModel
 │       │   └── utils/
 │       │       ├── BitmapUtils.kt     # Bitmap 工具类
 │       │       └── PermissionHelper.kt # 权限辅助类
@@ -194,6 +199,117 @@ vec2 enlargeWarp(vec2 coord, vec2 center, float radius, float intensity) {
 }
 ```
 
+### 人像分割引擎
+
+基于 ML Kit Selfie Segmentation 的人像分割与创意效果系统。
+
+#### 架构设计
+
+```
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│   输入图片      │ ──▶ │  SegmentationHelper  │ ──▶ │  分割掩码 Mask  │
+└─────────────────┘     │  (ML Kit)            │     └────────┬────────┘
+                        └──────────────────────┘              │
+                                                              ▼
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│    创意效果     │ ◀── │PortraitEffectProcessor│ ◀──│  掩码 + 原图    │
+└─────────────────┘     └──────────────────────┘     └─────────────────┘
+```
+
+#### SegmentationHelper - 人像分割
+
+```kotlin
+// 创建分割器
+val helper = SegmentationHelper.createForSingleImage()
+
+// 处理图片获取分割结果
+val result = helper.process(bitmap)
+
+// 转换为二值化掩码 Bitmap（人像=白，背景=黑）
+val maskBitmap = result.toMaskBitmap(threshold = 0.5f)
+
+// 转换为软边缘掩码（灰度过渡）
+val softMask = result.toSoftMaskBitmap()
+
+// 直接提取人像（背景透明）
+val portrait = result.extractPortrait(bitmap)
+
+// 释放资源
+helper.close()
+```
+
+#### PortraitEffectProcessor - 创意效果处理
+
+```kotlin
+val processor = PortraitEffectProcessor.create(context)
+
+// 功能 A: 背景虚化
+val blurred = processor.applyBackgroundBlur(
+    bitmap = original,
+    blurRadius = 25f,
+    useSoftEdge = true
+)
+
+// 功能 B: 人像留色（背景黑白）
+val colorPop = processor.applyColorPop(bitmap)
+
+// 反向人像留色（人像黑白，背景彩色）
+val inverse = processor.applyInverseColorPop(bitmap)
+
+// 背景替换
+val replaced = processor.replaceBackground(portrait, newBackground)
+
+// 纯色背景
+val whiteBg = processor.replaceBackgroundWithColor(bitmap, Color.WHITE)
+
+// 边缘光效
+val glowing = processor.applyEdgeGlow(bitmap, glowColor = Color.CYAN)
+
+processor.release()
+```
+
+#### PhotoEditViewModel - UI 集成示例
+
+```kotlin
+class EditActivity : AppCompatActivity() {
+    private val viewModel: PhotoEditViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // 观察处理状态
+        viewModel.processingState.observe(this) { state ->
+            when (state) {
+                is ProcessingState.Loading -> showLoading(state.message)
+                is ProcessingState.Success -> showImage(state.bitmap)
+                is ProcessingState.Error -> showError(state.message)
+                is ProcessingState.Idle -> hideLoading()
+            }
+        }
+
+        // 加载图片
+        viewModel.loadImage(imageUri)
+
+        // 应用效果
+        btnBlur.setOnClickListener {
+            viewModel.applyBackgroundBlur(blurRadius = 20f)
+        }
+
+        btnColorPop.setOnClickListener {
+            viewModel.applyColorPop()
+        }
+
+        btnFullBeauty.setOnClickListener {
+            viewModel.applyFullBeauty(
+                slimIntensity = 0.5f,
+                eyeEnlargeIntensity = 0.3f,
+                blurRadius = 20f
+            )
+        }
+    }
+}
+```
+
 ## 工具类说明
 
 ### BitmapUtils
@@ -304,16 +420,22 @@ git clone https://github.com/your-repo/AI-Photo-Master.git
 - [x] GPUImageFaceWarpFilter - GLSL 液化变形滤镜
 - [x] GPUImageAdvancedFaceWarpFilter - 多点高级变形滤镜
 - [x] FaceBeautyProcessor - 一体化美颜处理器
+- [x] SegmentationHelper - ML Kit 人像分割封装
+- [x] PortraitEffectProcessor - 人像创意效果处理器
+- [x] PhotoEditViewModel - 图片编辑 ViewModel 示例
+- [x] 背景虚化 / 渐进虚化
+- [x] 人像留色 / 反向人像留色
+- [x] 背景替换 / 纯色背景
+- [x] 边缘光效
 
 ### 进行中
-- [ ] 实现滤镜选择界面
-- [ ] 添加美颜强度调节 UI
+- [ ] 完善图片编辑界面
+- [ ] 添加保存和分享功能
 
 ### 待开发
-- [ ] 添加人像背景替换功能
 - [ ] 实现云端智能分析
-- [ ] 添加图片导出与分享
 - [ ] 实时相机美颜预览
+- [ ] 更多滤镜效果
 
 ## 许可证
 
