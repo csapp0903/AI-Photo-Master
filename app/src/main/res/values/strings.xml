@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI Photo Master</string>
+
+    <!-- 权限相关 -->
+    <string name="permission_camera_title">相机权限</string>
+    <string name="permission_camera_message">需要相机权限来拍摄照片</string>
+    <string name="permission_storage_title">存储权限</string>
+    <string name="permission_storage_message">需要存储权限来保存和读取照片</string>
+    <string name="permission_denied">权限被拒绝</string>
+    <string name="permission_go_settings">去设置</string>
+
+    <!-- 通用 -->
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="share">分享</string>
+    <string name="loading">加载中…</string>
+    <string name="error">错误</string>
+    <string name="success">成功</string>
+</resources>
